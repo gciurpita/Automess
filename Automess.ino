@@ -1,7 +1,7 @@
 // monitor Automess Dose Rate Meter
 // convert Automess output to floating pt value string
 
-const char version [] = "ver: 210407a greg ciurpita";
+const char version [] = "ver: 210412a greg ciurpita";
 
 #include <SoftwareSerial.h>
 
@@ -17,7 +17,10 @@ byte recBuf [MSG_SIZE] = { 02, 0x14, 0xd6, 0x6d, 0xfa, 0x55 };  // test data
 
 int  idx = 0;
 
-char s [80];
+char s [40];
+char t [10];
+
+void convert (uint8_t * recBuf);
 
 // -----------------------------------------------------------------------------
 void setup() {
@@ -26,6 +29,18 @@ void setup() {
 
     Serial.println ("<Automess Ready>");
     Serial.println (version);
+
+#if 1
+    byte testBuf [][MSG_SIZE] = {
+        { 0x02, 0x14, 0x70, 0x9d, 0x00, 0x55 },
+        { 0x02, 0x14, 0x37, 0xa1, 0xf6, 0x55 },
+        { 0x02, 0x14, 0x16, 0xa5, 0xec, 0x55 },
+    };
+
+    convert (& testBuf [0][0]);
+    convert (& testBuf [1][0]);
+    convert (& testBuf [2][0]);
+#endif
 }
 
 // -----------------------------------------------------------------------------
@@ -74,27 +89,48 @@ decode (
     uint8_t *buf )
 {
 #define EXP_OFF     -15
-    float   fVal = ((buf [MSB] << 8) | buf [LSB]);
+    float   fVal = (unsigned) ((buf [MSB] << 8) | buf [LSB]);
     int8_t  exp  = buf [EXP] + EXP_OFF;
 
     if (exp < 0)
-        fVal /=  (1L << -exp);
+        fVal /=  (1LL << -exp);
     else
-        fVal *=  (1L << exp);
+        fVal *=  (1LL << exp);
 
     return fVal;
 }
 
 // -----------------------------------------------------------------------------
 // check for input and processes when complete and valid
-void convert () {
+void convert (
+    uint8_t * recBuf )
+{
+#if 1       // potentially for debug
     for (int i = 0; i < MSG_SIZE; i++) {
         sprintf (s, " %02x", recBuf [i]);
         Serial.print (s);
     }
-
     Serial.print ("  ");
-    dtostrf (decode (recBuf), 6, 4, s);
+#endif
+
+    const char *units;
+    float val = decode (recBuf);
+
+    if (1.0 <= val)
+        units = "Sv/hr";
+
+    else if (0.001 <= val)  {
+        units = "mSv/hr";
+        val  *= 1000;
+    }
+    
+    else  {
+        units = "uSv/hr";
+        val  *= 1000000;
+    }
+
+    dtostrf (val, 3, 2, t);
+    sprintf (s, "%s %s", t, units);
     Serial.println (s);
 }
 
@@ -102,5 +138,5 @@ void convert () {
 // check for input and processes when complete and valid
 void loop() {
     if (receive ())
-        convert();
+        convert (recBuf);
 }
